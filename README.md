@@ -1,90 +1,95 @@
 # tendies-converter
 
-Convertit un fichier `.tendies` (paquet de fond d'écran communautaire, conçu pour la galerie « Ajouter un fond d'écran ») en une configuration **PosterBoard** réelle et fonctionnelle, puis l'injecte dans une sauvegarde iOS non chiffrée pour qu'il apparaisse sur l'appareil après une restauration complète.
+Converts a `.tendies` file (a community-made wallpaper package, originally meant for the "Add Wallpaper" gallery) into a real, working **PosterBoard** configuration, then injects it into an unencrypted iOS backup so it shows up on the device after a full restore.
 
-Aucun jailbreak, aucun exploit : uniquement le mécanisme de sauvegarde/restauration standard d'iOS (celui que Finder utilise pour restaurer un iPhone), avec un contenu personnalisé à l'intérieur.
+No jailbreak, no exploit: just the standard iOS backup/restore mechanism (the same one Finder or iTunes uses to restore an iPhone), with custom content inside.
 
-## Pourquoi ça existe
+## Where to get `.tendies` files
 
-Des outils comme [Nugget](https://github.com/leminlimez/Nugget) permettaient d'injecter ce genre de contenu via une **restauration partielle** détournée (SparseRestore, puis BookRestore) — des primitives internes d'iOS jamais destinées à un usage tiers. Apple a fermé ces deux portes ; sur iOS 27, toute tentative déclenche une réinitialisation d'usine complète.
+- **[cowabun.ga/wallpapers](https://cowabun.ga/wallpapers)** — a community gallery of ready-made `.tendies` wallpapers, from the team behind Nugget/Cowabunga. Browse, download, done.
+- **[caplayground.vercel.app](https://caplayground.vercel.app/)** — CAPlayground, a free browser-based editor to design your own animated wallpaper (layers, shapes, gradients, images, particles, 3D transforms) and export it as a `.tendies`, no desktop app or sign-in required.
 
-Ce projet contourne le problème autrement : en écrivant directement dans le contenu d'une **sauvegarde complète classique**, le mécanisme que n'importe qui utilise en restaurant un iPhone depuis Finder. Rien n'est détourné — le format de sauvegarde ne vérifie simplement pas le contenu des fichiers qu'il restaure (pas de somme de contrôle), ce qui laisse la porte ouverte à y déposer ce qu'on veut, tant que la structure attendue est respectée.
+## Why this exists
 
-**Contrepartie** : contrairement à une restauration partielle, ça implique d'effacer et de reconfigurer tout l'appareil à chaque ajout. Pas de solution miracle, juste un chemin qui fonctionne encore.
+Tools like [Nugget](https://github.com/leminlimez/Nugget) used to inject this kind of content through a hijacked **partial restore** (SparseRestore, then BookRestore) — internal iOS primitives never meant for third-party use. Apple closed both; on iOS 27, attempting either now triggers a full factory-reset loop.
 
-## Comment ça marche
+This project takes a different route: writing straight into the content of a **regular full backup**, the exact mechanism anyone uses when restoring an iPhone from Finder or iTunes. Nothing is being hijacked — the backup format simply doesn't verify the content of the files it restores (no checksum), which leaves the door open to put whatever you want in there, as long as the expected structure is respected.
 
-PosterBoard (le moteur de fond d'écran animé derrière la galerie « Collections ») stocke chaque fond d'écran à **deux endroits** qui doivent être écrits ensemble :
+**Trade-off**: unlike a partial restore, this means wiping and reconfiguring the whole device every time you add something. No miracle shortcut, just a path that still works.
 
-1. les fichiers de configuration, sous `Library/Application Support/PRBPosterExtensionDataStore/61/Extensions/<provider>/configurations/<UUID>/`
-2. une entrée dans le registre SQLite central (`PBFPosterExtensionDataStoreSQLiteDatabase.sqlite3`, tables `poster` / `posterRoleMembership` / `posterAttributes`)
+## How it works
 
-Sans la seconde, les fichiers existent bien sur l'appareil mais le fond d'écran reste invisible — PosterBoard ne consulte jamais le disque directement, seulement son registre.
+PosterBoard (the animated-wallpaper engine behind the "Collections" gallery) stores each wallpaper in **two places** that both need to be written together:
 
-Les `.tendies` de la communauté ne sont pas structurés comme une vraie configuration (ils manquent certains fichiers, ou en ont en trop selon l'outil qui les a produits). `convert.py` détecte automatiquement la forme reçue et complète ce qui manque.
+1. the configuration files, under `Library/Application Support/PRBPosterExtensionDataStore/61/Extensions/<provider>/configurations/<UUID>/`
+2. an entry in the central SQLite registry (`PBFPosterExtensionDataStoreSQLiteDatabase.sqlite3`, tables `poster` / `posterRoleMembership` / `posterAttributes`)
 
-## Prérequis
+Without the second one, the files exist on the device but the wallpaper stays invisible — PosterBoard never reads the disk directly, only its registry.
 
-- **macOS** (via Finder) ou **Windows** (via iTunes ou l'app Apple Devices) avec Python 3.8+ (rien à installer, seulement la bibliothèque standard)
-- Une sauvegarde locale **non chiffrée** de l'appareil
-- Un `.tendies` à convertir
+Community `.tendies` files aren't structured like a real configuration (they're missing some files, or have extra ones, depending on whichever tool produced them). `convert.py` automatically detects whichever shape it's given and fills in what's missing.
 
-Sur Windows, ferme iTunes / l'app Apple Devices avant de lancer `deploy.py` — Windows verrouille les fichiers ouverts par un autre programme, ce qui peut faire échouer l'archivage de la sauvegarde en cours.
+## Requirements
 
-`deploy.py` détecte automatiquement l'emplacement de la sauvegarde selon l'OS :
+- **macOS** (via Finder) or **Windows** (via iTunes or the Apple Devices app), with Python 3.8+ (nothing to install, standard library only)
+- An unencrypted local backup of the device
+- A `.tendies` file to convert
 
-| OS | Logiciel | Emplacement |
+On Windows, close iTunes / the Apple Devices app before running `deploy.py` — Windows locks files that are open in another program, which can make the backup archiving step fail.
+
+`deploy.py` automatically detects the backup location depending on the OS:
+
+| OS | Software | Location |
 |---|---|---|
 | macOS | Finder | `~/Library/Application Support/MobileSync/Backup/` |
-| Windows | iTunes (installeur Apple) | `%USERPROFILE%\AppData\Roaming\Apple Computer\MobileSync\Backup\` |
+| Windows | iTunes (Apple installer) | `%USERPROFILE%\AppData\Roaming\Apple Computer\MobileSync\Backup\` |
 | Windows | iTunes / Apple Devices (Microsoft Store) | `%USERPROFILE%\Apple\MobileSync\Backup\` |
 
-Les deux emplacements Windows sont vérifiés automatiquement (le premier qui contient une sauvegarde pour l'UDID donné est utilisé).
+Both Windows locations are checked automatically (whichever one has a backup for the given UDID is used).
 
-## Utilisation
+## Usage
 
-### Chaîne complète (recommandé)
+### Full pipeline (recommended)
 
-Greffe directement dans la sauvegarde locale réelle utilisée par iTunes/Finder :
-
-```bash
-python3 deploy.py fichier1.tendies [fichier2.tendies ...] [--select] [--udid <UDID>]
-```
-
-Ce que ça fait automatiquement :
-1. archive l'ancienne sauvegarde MobileSync (renommage, rien n'est perdu)
-2. copie cette archive vers l'emplacement MobileSync d'origine
-3. greffe chaque `.tendies` dedans (voir `convert.py`)
-4. vérifie l'intégrité des deux bases (`PRAGMA integrity_check`)
-5. si une étape échoue : restaure automatiquement l'archive à sa place
-
-Ne déclenche **pas** la restauration elle-même — ouvre Finder (macOS) ou iTunes/Apple Devices (Windows) et lance « Restaurer la sauvegarde » une fois prêt.
-
-`--select` active immédiatement le dernier poster greffé comme fond d'écran actif. Avec plusieurs fichiers (ou un `.tendies` contenant plusieurs wallpapers), seul le dernier traité devient actif ; les autres sont ajoutés au carrousel sans y être sélectionnés — tu choisis ensuite sur l'appareil.
-
-### Conversion seule (sans toucher à MobileSync)
-
-Utile pour tester un nouveau `.tendies` sur une copie de sauvegarde, sans risque :
+Grafts directly into the real local backup used by iTunes/Finder:
 
 ```bash
-python3 convert.py fichier.tendies /chemin/vers/une/copie/de/backup [--select] [--dry-run]
+python3 deploy.py file1.tendies [file2.tendies ...] [--select] [--udid <UDID>]
 ```
 
-`--dry-run` analyse le fichier (détection de forme, identifiants dérivés) sans rien écrire.
+What it does automatically:
+1. archives the current backup (rename, nothing is lost)
+2. copies that archive back to the original backup location
+3. grafts each `.tendies` into it (see `convert.py`)
+4. verifies the integrity of both databases (`PRAGMA integrity_check`)
+5. if any step fails: automatically restores the archive back in place
+
+It does **not** trigger the restore itself — open Finder (macOS) or iTunes/Apple Devices (Windows) and click "Restore Backup" once you're ready.
+
+`--select` immediately activates the last grafted poster as the active wallpaper. With multiple files (or a `.tendies` containing several wallpapers), only the last one processed becomes active; the others are added to the carousel without being selected — pick the one you want on the device afterward.
+
+### Conversion only (without touching the real backup)
+
+Useful for testing a new `.tendies` on a backup copy, risk-free:
+
+```bash
+python3 convert.py file.tendies /path/to/a/backup/copy [--select] [--dry-run]
+```
+
+`--dry-run` analyzes the file (shape detection, derived identifiers) without writing anything.
 
 ## Logs
 
-Chaque exécution écrit un journal détaillé et horodaté dans `logs/` : chaque fichier/dossier inséré (fileID, chemin, taille), chaque ligne SQL du registre, et la trace complète en cas d'erreur. La console reste volontairement courte ; le détail va dans le fichier.
+Every run writes a detailed, timestamped log to `logs/`: every file/folder inserted (fileID, path, size), every SQL row written to the registry, and the full traceback on error. The console output stays short on purpose; the detail goes into the log file.
 
-## Limites connues
+## Known limitations
 
-- Un `.tendies` contenant plusieurs wallpapers (ex: variantes saisonnières) devient plusieurs entrées **indépendantes** du carrousel — pas un poster unique qui changerait automatiquement.
-- Le mismatch de résolution entre le contenu du `.tendies` et l'écran réel de l'appareil n'a pas semblé bloquant lors des tests, mais rien n'est modifié/adapté à ce sujet — c'est copié tel quel.
-- Aucune garantie sur des mécanismes internes non identifiés (ex: liaison entre deux descripteurs pour un effet gyroscope) — l'outil copie fidèlement ce qu'il trouve, sans réinterpréter le contenu `.ca`.
+- A `.tendies` containing several wallpapers (e.g. seasonal variants) becomes several **independent** carousel entries — not a single poster that would switch automatically.
+- The resolution mismatch between the `.tendies` content and the device's actual screen didn't appear to be blocking during testing, but nothing is adapted/resized for it — it's copied as-is.
+- No guarantee around unidentified internal mechanisms (e.g. two descriptors linked together for a gyroscope effect) — the tool faithfully copies whatever it finds, without reinterpreting the `.ca` content.
 
-## Sécurité et bon sens
+## Safety and common sense
 
-- Ne jamais lancer `deploy.py` sans avoir une sauvegarde à jour de l'appareil au préalable (Finder/iTunes → Sauvegarder maintenant).
-- Une restauration complète efface et reconfigure l'appareil — chronophage, mais sans rapport avec les mécanismes de restauration partielle qu'Apple a rendus dangereux sur iOS 27.
-- Ce projet ne modifie que le domaine `AppDomain-com.apple.PosterBoard` de la sauvegarde ; rien d'autre n'est touché.
-- Usage personnel sur son propre appareil. Aucune garantie fournie — teste sur une copie de sauvegarde avant de déployer.
+- Never run `deploy.py` without an up-to-date backup of the device beforehand (Finder/iTunes → Back Up Now).
+- A full restore wipes and reconfigures the device — time-consuming, but unrelated to the partial-restore mechanisms Apple made dangerous on iOS 27.
+- This project only modifies the `AppDomain-com.apple.PosterBoard` domain of the backup; nothing else is touched.
+- Personal use on your own device. No warranty provided — test on a backup copy before deploying for real.
