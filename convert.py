@@ -23,6 +23,7 @@ import plistlib
 import shutil
 import sqlite3
 import sys
+import tempfile
 import time
 import uuid
 import zipfile
@@ -100,13 +101,13 @@ def inspect_descriptor(descriptor_dir: Path):
     target_provider = None
 
     if role_file.exists():
-        role_identifier = role_file.read_text().strip()
+        role_identifier = role_file.read_text(encoding="utf-8").strip()
         logger.debug(f"role.identifier lu directement dans le fichier : {role_identifier}")
     else:
         logger.debug("role.identifier absent du descripteur")
 
     if descriptor_id_file.exists():
-        descriptor_identifier = descriptor_id_file.read_text().strip()
+        descriptor_identifier = descriptor_id_file.read_text(encoding="utf-8").strip()
         logger.debug(f"descriptor.identifier lu directement dans le fichier : {descriptor_identifier}")
     else:
         logger.debug("descriptor.identifier absent du descripteur")
@@ -193,8 +194,10 @@ def build_configuration(descriptor_dir: Path, info: dict, staging_root: Path) ->
     logger.debug(f"copie {descriptor_dir} -> {config_dir} (nouveau posterUUID={new_uuid})")
     shutil.copytree(descriptor_dir, config_dir)
 
-    (config_dir / "com.apple.posterkit.role.identifier").write_text(info["role_identifier"])
-    (config_dir / "com.apple.posterkit.provider.descriptor.identifier").write_text(info["descriptor_identifier"])
+    (config_dir / "com.apple.posterkit.role.identifier").write_text(info["role_identifier"], encoding="utf-8")
+    (config_dir / "com.apple.posterkit.provider.descriptor.identifier").write_text(
+        info["descriptor_identifier"], encoding="utf-8"
+    )
     logger.debug(
         f"role.identifier='{info['role_identifier']}' et "
         f"descriptor.identifier='{info['descriptor_identifier']}' écrits dans {config_dir}"
@@ -440,7 +443,7 @@ def convert(tendies_path: Path, backup_dir: Path, select: bool, dry_run: bool):
         raise FileNotFoundError(f"{backup_dir} ne ressemble pas à une sauvegarde iOS (pas de Manifest.db)")
 
     now = int(time.time())
-    staging = Path(f"/tmp/tendies_staging_{uuid.uuid4().hex}")
+    staging = Path(tempfile.gettempdir()) / f"tendies_staging_{uuid.uuid4().hex}"
     staging.mkdir()
     logger.debug(f"dossier de travail temporaire : {staging}")
     try:

@@ -22,6 +22,7 @@ bases, et la trace complète en cas d'erreur.
 """
 
 import argparse
+import platform
 import shutil
 import sys
 import time
@@ -33,7 +34,37 @@ from logsetup import get_logger, setup_logging
 logger = get_logger()
 
 DEFAULT_UDID = "00008150-000A22123C78C01C"
-MOBILESYNC_BASE = Path.home() / "Library" / "Application Support" / "MobileSync" / "Backup"
+
+
+def candidate_mobilesync_bases():
+    """Emplacements possibles du dossier de sauvegardes selon l'OS et le
+    logiciel utilisé (macOS n'a qu'un seul emplacement ; Windows en a deux
+    selon que c'est iTunes "classique" ou l'app Apple Devices/Microsoft Store)."""
+    system = platform.system()
+    home = Path.home()
+    if system == "Darwin":
+        return [home / "Library" / "Application Support" / "MobileSync" / "Backup"]
+    if system == "Windows":
+        return [
+            home / "AppData" / "Roaming" / "Apple Computer" / "MobileSync" / "Backup",  # iTunes classique
+            home / "Apple" / "MobileSync" / "Backup",  # Apple Devices / iTunes Microsoft Store
+        ]
+    raise RuntimeError(f"Système non supporté : {system!r} (seulement macOS et Windows)")
+
+
+def find_backup_dir(udid: str) -> Path:
+    candidates = candidate_mobilesync_bases()
+    logger.debug(f"emplacements de sauvegarde vérifiés pour udid={udid} : {candidates}")
+    for base in candidates:
+        backup_dir = base / udid
+        if (backup_dir / "Manifest.db").exists():
+            logger.debug(f"sauvegarde trouvée : {backup_dir}")
+            return backup_dir
+    checked = "\n".join(f"  - {base / udid}" for base in candidates)
+    logger.error(f"aucune sauvegarde trouvée pour udid={udid}")
+    raise FileNotFoundError(
+        f"Pas de sauvegarde Manifest.db trouvée pour {udid}. Emplacements vérifiés :\n{checked}"
+    )
 
 
 def _dir_stats(path: Path):
@@ -55,17 +86,14 @@ def _dir_stats(path: Path):
 def deploy(tendies_paths, select: bool, udid: str):
     logger.info(f"=== deploy: udid={udid} select={select} tendies={list(tendies_paths)} ===")
 
-    backup_dir = MOBILESYNC_BASE / udid
-    logger.debug(f"dossier MobileSync attendu : {backup_dir}")
-    if not (backup_dir / "Manifest.db").exists():
-        logger.error(f"pas de Manifest.db dans {backup_dir}")
-        raise FileNotFoundError(f"Pas de sauvegarde Manifest.db trouvée pour {udid} dans {MOBILESYNC_BASE}")
+    backup_dir = find_backup_dir(udid)
+    logger.debug(f"dossier MobileSync trouvé : {backup_dir}")
 
     n_files, n_dirs, total = _dir_stats(backup_dir)
     logger.debug(f"sauvegarde actuelle avant archivage : {n_files} fichiers, {n_dirs} dossiers, {total} octets")
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    archive_dir = MOBILESYNC_BASE / f"{udid}-{timestamp}"
+    archive_dir = backup_dir.parent / f"{udid}-{timestamp}"
 
     logger.info(f"[1/4] Archivage de la sauvegarde actuelle -> {archive_dir.name}")
     t0 = time.monotonic()

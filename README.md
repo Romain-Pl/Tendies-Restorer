@@ -25,15 +25,27 @@ Les `.tendies` de la communauté ne sont pas structurés comme une vraie configu
 
 ## Prérequis
 
-- macOS avec Python 3.8+ (rien à installer, seulement la bibliothèque standard)
-- Finder capable de faire une sauvegarde locale **non chiffrée** de l'appareil
+- **macOS** (via Finder) ou **Windows** (via iTunes ou l'app Apple Devices) avec Python 3.8+ (rien à installer, seulement la bibliothèque standard)
+- Une sauvegarde locale **non chiffrée** de l'appareil
 - Un `.tendies` à convertir
+
+Sur Windows, ferme iTunes / l'app Apple Devices avant de lancer `deploy.py` — Windows verrouille les fichiers ouverts par un autre programme, ce qui peut faire échouer l'archivage de la sauvegarde en cours.
+
+`deploy.py` détecte automatiquement l'emplacement de la sauvegarde selon l'OS :
+
+| OS | Logiciel | Emplacement |
+|---|---|---|
+| macOS | Finder | `~/Library/Application Support/MobileSync/Backup/` |
+| Windows | iTunes (installeur Apple) | `%USERPROFILE%\AppData\Roaming\Apple Computer\MobileSync\Backup\` |
+| Windows | iTunes / Apple Devices (Microsoft Store) | `%USERPROFILE%\Apple\MobileSync\Backup\` |
+
+Les deux emplacements Windows sont vérifiés automatiquement (le premier qui contient une sauvegarde pour l'UDID donné est utilisé).
 
 ## Utilisation
 
 ### Chaîne complète (recommandé)
 
-Greffe directement dans la sauvegarde MobileSync réelle utilisée par Finder :
+Greffe directement dans la sauvegarde locale réelle utilisée par iTunes/Finder :
 
 ```bash
 python3 deploy.py fichier1.tendies [fichier2.tendies ...] [--select] [--udid <UDID>]
@@ -46,7 +58,7 @@ Ce que ça fait automatiquement :
 4. vérifie l'intégrité des deux bases (`PRAGMA integrity_check`)
 5. si une étape échoue : restaure automatiquement l'archive à sa place
 
-Ne déclenche **pas** la restauration elle-même — ouvre Finder et lance « Restaurer la sauvegarde » une fois prêt.
+Ne déclenche **pas** la restauration elle-même — ouvre Finder (macOS) ou iTunes/Apple Devices (Windows) et lance « Restaurer la sauvegarde » une fois prêt.
 
 `--select` active immédiatement le dernier poster greffé comme fond d'écran actif. Avec plusieurs fichiers (ou un `.tendies` contenant plusieurs wallpapers), seul le dernier traité devient actif ; les autres sont ajoutés au carrousel sans y être sélectionnés — tu choisis ensuite sur l'appareil.
 
@@ -72,7 +84,7 @@ Chaque exécution écrit un journal détaillé et horodaté dans `logs/` : chaqu
 
 ## Sécurité et bon sens
 
-- Ne jamais lancer `deploy.py` sans avoir une sauvegarde à jour de l'appareil au préalable (Finder → Sauvegarder maintenant).
+- Ne jamais lancer `deploy.py` sans avoir une sauvegarde à jour de l'appareil au préalable (Finder/iTunes → Sauvegarder maintenant).
 - Une restauration complète efface et reconfigure l'appareil — chronophage, mais sans rapport avec les mécanismes de restauration partielle qu'Apple a rendus dangereux sur iOS 27.
 - Ce projet ne modifie que le domaine `AppDomain-com.apple.PosterBoard` de la sauvegarde ; rien d'autre n'est touché.
 - Usage personnel sur son propre appareil. Aucune garantie fournie — teste sur une copie de sauvegarde avant de déployer.

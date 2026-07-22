@@ -17,7 +17,21 @@ LOG_DIR = Path(__file__).parent / "logs"
 LOGGER_NAME = "tendies"
 
 
+def _force_utf8_console():
+    """Sur Windows, la console peut être configurée dans un encodage (cp1252,
+    cp850...) qui ne supporte pas les accents utilisés dans les messages. On
+    force l'UTF-8 pour éviter un crash à la première lettre accentuée."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def setup_logging(run_name: str, argv=None) -> Path:
+    _force_utf8_console()
     LOG_DIR.mkdir(exist_ok=True)
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     log_path = LOG_DIR / f"{run_name}-{timestamp}.log"
