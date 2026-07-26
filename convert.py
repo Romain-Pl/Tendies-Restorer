@@ -101,13 +101,13 @@ def inspect_descriptor(descriptor_dir: Path):
     target_provider = None
 
     if role_file.exists():
-        role_identifier = role_file.read_text(encoding="utf-8").strip()
+        role_identifier = role_file.read_text(encoding="utf-8").strip() or None
         logger.debug(f"role.identifier lu directement dans le fichier : {role_identifier}")
     else:
         logger.debug("role.identifier absent du descripteur")
 
     if descriptor_id_file.exists():
-        descriptor_identifier = descriptor_id_file.read_text(encoding="utf-8").strip()
+        descriptor_identifier = descriptor_id_file.read_text(encoding="utf-8").strip() or None
         logger.debug(f"descriptor.identifier lu directement dans le fichier : {descriptor_identifier}")
     else:
         logger.debug("descriptor.identifier absent du descripteur")

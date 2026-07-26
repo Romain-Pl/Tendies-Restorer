@@ -33,9 +33,6 @@ from logsetup import get_logger, setup_logging
 
 logger = get_logger()
 
-DEFAULT_UDID = "00008150-000A22123C78C01C"
-
-
 def candidate_mobilesync_bases():
     """Emplacements possibles du dossier de sauvegardes selon l'OS et le
     logiciel utilisé (macOS n'a qu'un seul emplacement ; Windows en a deux
@@ -52,18 +49,49 @@ def candidate_mobilesync_bases():
     raise RuntimeError(f"Système non supporté : {system!r} (seulement macOS et Windows)")
 
 
-def find_backup_dir(udid: str) -> Path:
-    candidates = candidate_mobilesync_bases()
-    logger.debug(f"emplacements de sauvegarde vérifiés pour udid={udid} : {candidates}")
-    for base in candidates:
-        backup_dir = base / udid
-        if (backup_dir / "Manifest.db").exists():
-            logger.debug(f"sauvegarde trouvée : {backup_dir}")
-            return backup_dir
-    checked = "\n".join(f"  - {base / udid}" for base in candidates)
-    logger.error(f"aucune sauvegarde trouvée pour udid={udid}")
-    raise FileNotFoundError(
-        f"Pas de sauvegarde Manifest.db trouvée pour {udid}. Emplacements vérifiés :\n{checked}"
+def list_available_backups():
+    """Liste tous les dossiers de sauvegarde valides (contenant Manifest.db)
+    trouvés dans les emplacements MobileSync connus."""
+    found = []
+    for base in candidate_mobilesync_bases():
+        if not base.is_dir():
+            continue
+        for child in sorted(base.iterdir()):
+            if child.is_dir() and (child / "Manifest.db").exists():
+                found.append(child)
+    return found
+
+
+def find_backup_dir(udid) -> Path:
+    if udid:
+        candidates = candidate_mobilesync_bases()
+        logger.debug(f"emplacements de sauvegarde vérifiés pour udid={udid} : {candidates}")
+        for base in candidates:
+            backup_dir = base / udid
+            if (backup_dir / "Manifest.db").exists():
+                logger.debug(f"sauvegarde trouvée : {backup_dir}")
+                return backup_dir
+        checked = "\n".join(f"  - {base / udid}" for base in candidates)
+        logger.error(f"aucune sauvegarde trouvée pour udid={udid}")
+        raise FileNotFoundError(
+            f"Pas de sauvegarde Manifest.db trouvée pour {udid}. Emplacements vérifiés :\n{checked}"
+        )
+
+    logger.debug("aucun udid fourni, détection automatique parmi les sauvegardes disponibles")
+    found = list_available_backups()
+    if len(found) == 1:
+        logger.info(f"Un seul appareil détecté, utilisation automatique : {found[0].name}")
+        return found[0]
+    if not found:
+        logger.error("aucune sauvegarde trouvée dans les emplacements MobileSync connus")
+        raise FileNotFoundError(
+            "Aucune sauvegarde iOS trouvée dans les emplacements MobileSync connus. "
+            "Fais une sauvegarde via Finder/iTunes d'abord."
+        )
+    listed = "\n".join(f"  - {b.name}" for b in found)
+    logger.error(f"plusieurs sauvegardes trouvées, udid requis : {[b.name for b in found]}")
+    raise ValueError(
+        f"Plusieurs sauvegardes trouvées, précise laquelle avec --udid <UDID> :\n{listed}"
     )
 
 
@@ -83,10 +111,11 @@ def _dir_stats(path: Path):
         return None, None, None
 
 
-def deploy(tendies_paths, select: bool, udid: str):
-    logger.info(f"=== deploy: udid={udid} select={select} tendies={list(tendies_paths)} ===")
+def deploy(tendies_paths, select: bool, udid: str = None):
+    logger.info(f"=== deploy: udid={udid or '(auto)'} select={select} tendies={list(tendies_paths)} ===")
 
     backup_dir = find_backup_dir(udid)
+    udid = backup_dir.name
     logger.debug(f"dossier MobileSync trouvé : {backup_dir}")
 
     n_files, n_dirs, total = _dir_stats(backup_dir)
@@ -129,7 +158,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("tendies", nargs="+", help="Un ou plusieurs fichiers .tendies à greffer")
     parser.add_argument("--select", action="store_true", help="Active immédiatement le(s) poster(s) greffé(s)")
-    parser.add_argument("--udid", default=DEFAULT_UDID, help="UDID de l'appareil (dossier MobileSync)")
+    parser.add_argument(
+        "--udid", default=None,
+        help="UDID de l'appareil (dossier MobileSync). Si omis, auto-détecté "
+             "s'il n'y a qu'une seule sauvegarde disponible.",
+    )
     args = parser.parse_args()
 
     log_path = setup_logging("deploy", sys.argv)
