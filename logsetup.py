@@ -1,10 +1,11 @@
-"""Configuration de logs partagée par convert.py et deploy.py.
+"""Shared logging setup for all CLI tools (convert.py, deploy.py, combine.py,
+appearance.py, sim_deploy.py, dump.py, gui.py).
 
-Chaque exécution écrit un fichier journal horodaté et complet dans logs/,
-en plus d'un résumé lisible affiché dans la console. En cas de problème sur
-l'appareil après une restauration, le fichier journal correspondant à cette
-exécution contient tout le détail (chemins, fileID, UUID générés, requêtes
-SQL, tracebacks) pour comprendre ce qui a été écrit.
+Every run writes a timestamped, detailed log file to logs/, in addition to a
+readable summary printed to the console. If something goes wrong on the
+device after a restore, the log file for that run has the full detail
+(paths, fileIDs, generated UUIDs, SQL statements, tracebacks) to figure out
+what was actually written.
 """
 
 import logging
@@ -18,9 +19,9 @@ LOGGER_NAME = "tendies"
 
 
 def _force_utf8_console():
-    """Sur Windows, la console peut être configurée dans un encodage (cp1252,
-    cp850...) qui ne supporte pas les accents utilisés dans les messages. On
-    force l'UTF-8 pour éviter un crash à la première lettre accentuée."""
+    """On Windows, the console can be configured with an encoding (cp1252,
+    cp850...) that doesn't support the accented characters used in some
+    messages. Force UTF-8 to avoid crashing on the first accented letter."""
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
         if stream is not None and hasattr(stream, "reconfigure"):
@@ -55,10 +56,10 @@ def setup_logging(run_name: str, argv=None) -> Path:
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-    logger.debug(f"===== nouvelle exécution : {run_name} =====")
+    logger.debug(f"===== new run: {run_name} =====")
     logger.debug(f"python={sys.version.split()[0]} platform={platform.platform()}")
     logger.debug(f"argv={argv if argv is not None else sys.argv}")
-    logger.info(f"Journal détaillé de cette exécution : {log_path}")
+    logger.info(f"Detailed log for this run: {log_path}")
 
     return log_path
 

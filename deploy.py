@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-Chaîne complète : greffe un ou plusieurs .tendies directement dans la
-sauvegarde MobileSync réelle utilisée par Finder pour cet iPhone.
+Full pipeline: grafts one or more .tendies straight into the real MobileSync
+backup Finder uses for this iPhone.
 
 Usage:
-    python3 deploy.py <fichier1.tendies> [fichier2.tendies ...] [--select] [--udid ...]
+    python3 deploy.py <file1.tendies> [file2.tendies ...] [--select] [--udid ...]
 
-Étapes automatiques :
-  1. archive l'ancienne sauvegarde MobileSync (renommage, aucune perte)
-  2. copie cette archive vers l'emplacement MobileSync d'origine
-  3. y greffe chaque .tendies (via convert.py)
-  4. vérifie l'intégrité des deux bases
-  5. si une étape échoue : restaure automatiquement l'archive à sa place
+Automatic steps:
+  1. archives the old MobileSync backup (rename, nothing is lost)
+  2. copies that archive back to the original MobileSync location
+  3. grafts each .tendies into it (via convert.py)
+  4. verifies the integrity of both databases
+  5. if any step fails: automatically restores the archive back in place
 
-Ne déclenche PAS la restauration elle-même : ça reste une action que tu fais
-toi-même dans Finder, une fois prêt.
+Does NOT trigger the restore itself: that stays something you do yourself in
+Finder, once you're ready.
 
-Un journal détaillé de chaque exécution est écrit dans logs/ (voir
-logsetup.py) : chemins, identifiants générés, chaque ligne insérée dans les
-bases, et la trace complète en cas d'erreur.
+A detailed log of every run is written to logs/ (see logsetup.py): paths,
+generated identifiers, every row inserted into the databases, and the full
+traceback on error.
 """
 
 import argparse
@@ -34,24 +34,24 @@ from logsetup import get_logger, setup_logging
 logger = get_logger()
 
 def candidate_mobilesync_bases():
-    """Emplacements possibles du dossier de sauvegardes selon l'OS et le
-    logiciel utilisé (macOS n'a qu'un seul emplacement ; Windows en a deux
-    selon que c'est iTunes "classique" ou l'app Apple Devices/Microsoft Store)."""
+    """Possible backup folder locations depending on the OS and software in
+    use (macOS only has one location; Windows has two, depending on whether
+    it's "classic" iTunes or the Apple Devices/Microsoft Store app)."""
     system = platform.system()
     home = Path.home()
     if system == "Darwin":
         return [home / "Library" / "Application Support" / "MobileSync" / "Backup"]
     if system == "Windows":
         return [
-            home / "AppData" / "Roaming" / "Apple Computer" / "MobileSync" / "Backup",  # iTunes classique
-            home / "Apple" / "MobileSync" / "Backup",  # Apple Devices / iTunes Microsoft Store
+            home / "AppData" / "Roaming" / "Apple Computer" / "MobileSync" / "Backup",  # classic iTunes
+            home / "Apple" / "MobileSync" / "Backup",  # Apple Devices / iTunes from the Microsoft Store
         ]
-    raise RuntimeError(f"Système non supporté : {system!r} (seulement macOS et Windows)")
+    raise RuntimeError(f"Unsupported system: {system!r} (macOS and Windows only)")
 
 
 def list_available_backups():
-    """Liste tous les dossiers de sauvegarde valides (contenant Manifest.db)
-    trouvés dans les emplacements MobileSync connus."""
+    """Lists every valid backup folder (containing a Manifest.db) found in
+    the known MobileSync locations."""
     found = []
     for base in candidate_mobilesync_bases():
         if not base.is_dir():
@@ -65,38 +65,38 @@ def list_available_backups():
 def find_backup_dir(udid) -> Path:
     if udid:
         candidates = candidate_mobilesync_bases()
-        logger.debug(f"emplacements de sauvegarde vérifiés pour udid={udid} : {candidates}")
+        logger.debug(f"backup locations checked for udid={udid}: {candidates}")
         for base in candidates:
             backup_dir = base / udid
             if (backup_dir / "Manifest.db").exists():
-                logger.debug(f"sauvegarde trouvée : {backup_dir}")
+                logger.debug(f"backup found: {backup_dir}")
                 return backup_dir
         checked = "\n".join(f"  - {base / udid}" for base in candidates)
-        logger.error(f"aucune sauvegarde trouvée pour udid={udid}")
+        logger.error(f"no backup found for udid={udid}")
         raise FileNotFoundError(
-            f"Pas de sauvegarde Manifest.db trouvée pour {udid}. Emplacements vérifiés :\n{checked}"
+            f"No Manifest.db backup found for {udid}. Locations checked:\n{checked}"
         )
 
-    logger.debug("aucun udid fourni, détection automatique parmi les sauvegardes disponibles")
+    logger.debug("no udid given, auto-detecting among available backups")
     found = list_available_backups()
     if len(found) == 1:
-        logger.info(f"Un seul appareil détecté, utilisation automatique : {found[0].name}")
+        logger.info(f"Single device detected, using it automatically: {found[0].name}")
         return found[0]
     if not found:
-        logger.error("aucune sauvegarde trouvée dans les emplacements MobileSync connus")
+        logger.error("no backup found in the known MobileSync locations")
         raise FileNotFoundError(
-            "Aucune sauvegarde iOS trouvée dans les emplacements MobileSync connus. "
-            "Fais une sauvegarde via Finder/iTunes d'abord."
+            "No iOS backup found in the known MobileSync locations. "
+            "Make a backup via Finder/iTunes first."
         )
     listed = "\n".join(f"  - {b.name}" for b in found)
-    logger.error(f"plusieurs sauvegardes trouvées, udid requis : {[b.name for b in found]}")
+    logger.error(f"several backups found, udid required: {[b.name for b in found]}")
     raise ValueError(
-        f"Plusieurs sauvegardes trouvées, précise laquelle avec --udid <UDID> :\n{listed}"
+        f"Several backups found, specify which one with --udid <UDID>:\n{listed}"
     )
 
 
 def _dir_stats(path: Path):
-    """Compte fichiers/dossiers et taille totale (best-effort, pour le journal)."""
+    """Counts files/folders and total size (best-effort, for the log)."""
     try:
         n_files = n_dirs = total = 0
         for p in path.rglob("*"):
@@ -107,61 +107,66 @@ def _dir_stats(path: Path):
                 total += p.stat().st_size
         return n_files, n_dirs, total
     except Exception:
-        logger.exception(f"impossible de calculer les statistiques de {path}")
+        logger.exception(f"couldn't compute stats for {path}")
         return None, None, None
 
 
 def deploy(tendies_paths, select: bool, udid: str = None):
     logger.info(f"=== deploy: udid={udid or '(auto)'} select={select} tendies={list(tendies_paths)} ===")
-
     backup_dir = find_backup_dir(udid)
+    deploy_to_dir(backup_dir, tendies_paths, select)
+
+
+def deploy_to_dir(backup_dir: Path, tendies_paths, select: bool):
+    """Core of deploy() once the MobileSync folder has already been
+    determined (by udid on the CLI, or picked explicitly by a caller)."""
     udid = backup_dir.name
-    logger.debug(f"dossier MobileSync trouvé : {backup_dir}")
+    logger.info(f"=== deploy_to_dir: {backup_dir} select={select} tendies={list(tendies_paths)} ===")
 
     n_files, n_dirs, total = _dir_stats(backup_dir)
-    logger.debug(f"sauvegarde actuelle avant archivage : {n_files} fichiers, {n_dirs} dossiers, {total} octets")
+    logger.debug(f"current backup before archiving: {n_files} files, {n_dirs} folders, {total} bytes")
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     archive_dir = backup_dir.parent / f"{udid}-{timestamp}"
 
-    logger.info(f"[1/4] Archivage de la sauvegarde actuelle -> {archive_dir.name}")
+    logger.info(f"[1/4] Archiving the current backup -> {archive_dir.name}")
     t0 = time.monotonic()
     backup_dir.rename(archive_dir)
-    logger.debug(f"renommage {backup_dir} -> {archive_dir} effectué en {time.monotonic() - t0:.3f}s")
+    logger.debug(f"rename {backup_dir} -> {archive_dir} done in {time.monotonic() - t0:.3f}s")
 
     try:
-        logger.info("[2/4] Copie de travail vers l'emplacement MobileSync...")
+        logger.info("[2/4] Copying a working copy back to the MobileSync location...")
         t0 = time.monotonic()
         shutil.copytree(archive_dir, backup_dir)
-        logger.debug(f"copytree {archive_dir} -> {backup_dir} effectué en {time.monotonic() - t0:.1f}s")
+        logger.debug(f"copytree {archive_dir} -> {backup_dir} done in {time.monotonic() - t0:.1f}s")
 
-        logger.info(f"[3/4] Greffe de {len(tendies_paths)} fichier(s) .tendies")
+        logger.info(f"[3/4] Grafting {len(tendies_paths)} .tendies file(s)")
         for i, tendies_path in enumerate(tendies_paths, 1):
             logger.info(f"--- ({i}/{len(tendies_paths)}) {Path(tendies_path).name} ---")
             convert(Path(tendies_path), backup_dir, select=select, dry_run=False)
 
-        logger.info("[4/4] Terminé.")
-        logger.info(f"Sauvegarde prête : {backup_dir}")
-        logger.info(f"Ancienne sauvegarde conservée : {archive_dir}")
-        logger.info("Ouvre Finder et lance la restauration quand tu es prêt.")
+        logger.info("[4/4] Done.")
+        logger.info(f"Backup ready: {backup_dir}")
+        logger.info(f"Previous backup kept at: {archive_dir}")
+        logger.info("Open Finder and start the restore when you're ready.")
     except Exception:
-        logger.warning("échec pendant la greffe — restauration de l'état précédent en cours...")
+        logger.warning("graft failed — rolling back to the previous state...")
         if backup_dir.exists():
-            logger.debug(f"suppression de la copie de travail partielle {backup_dir}")
+            logger.debug(f"removing the partial working copy {backup_dir}")
             shutil.rmtree(backup_dir)
         archive_dir.rename(backup_dir)
-        logger.warning(f"rollback terminé : {archive_dir} -> {backup_dir}. Rien n'est perdu.")
+        logger.warning(f"rollback done: {archive_dir} -> {backup_dir}. Nothing was lost.")
         raise
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("tendies", nargs="+", help="Un ou plusieurs fichiers .tendies à greffer")
-    parser.add_argument("--select", action="store_true", help="Active immédiatement le(s) poster(s) greffé(s)")
+    parser.add_argument("tendies", nargs="+", help="One or more .tendies files to graft")
+    parser.add_argument("--select", action="store_true", help="Immediately activate the grafted poster(s)")
     parser.add_argument(
         "--udid", default=None,
-        help="UDID de l'appareil (dossier MobileSync). Si omis, auto-détecté "
-             "s'il n'y a qu'une seule sauvegarde disponible.",
+        help="Device UDID (MobileSync folder). If omitted, auto-detected "
+             "when only one backup is available.",
     )
     args = parser.parse_args()
 
@@ -169,8 +174,8 @@ def main():
     try:
         deploy(args.tendies, args.select, args.udid)
     except Exception:
-        logger.exception("échec de deploy()")
-        print(f"\n[!] Échec. Détails complets dans : {log_path}", file=sys.stderr)
+        logger.exception("deploy() failed")
+        print(f"\n[!] Failed. Full details in: {log_path}", file=sys.stderr)
         sys.exit(1)
 
 
